@@ -1,3 +1,3 @@
 print "HI"
-from . import defaults
+from .. import defaults
 print defaults.useOS

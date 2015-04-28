@@ -1,3 +1,11 @@
+import logging
+#argparse
+
+logger = logging.getLogger('pyPAT')
+ch = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 
 _GDALOK = True
@@ -11,48 +19,63 @@ _SAOK = True
 try:
     import gdal
     import ogr
-    print "gdal/ogr imported"
+    logger.info("gdal/ogr present")
 except:
-    print "gdal/ogr not found"
+    logger.warning("gdal/ogr not found")
     _GDALOK = False
 
 try:
     import shapely
-    print "shapely imported"
+    logger.info("shapely present")
 except:
-    print "shapely not found"
+    logger.warning("shapely not found")
     _SHPLYOK = False
 
 try:
     import fiona
-    print "fiona imported"
+    logger.info("fiona present")
 except:
-    print "fiona not found"
+    logger.warning("fiona not found")
     _FIONAOK = False
 
 try:
     import rasterio
-    print "rasterio imported"
+    logger.info("rasterio present")
 except:
-    print "rasterio not found"
+    logger.warning("rasterio not found")
+    _RRIOOK = False
+
+try:
+    import matplotlib
+    logger.info("matplotlib present")
+except:
+    logger.warning("matplotlib not found")
     _RRIOOK = False
 
 #Check for Arcpy and Extentions
 try:
     import arcpy
-    print "arcpy imported"
+    logger.info("arcpy present")
 except:
-    print "arcpy not found"
+    logger.warning("arcpy not found")
     _ARCOK = False
 
 if arcpy.CheckExtension("Spatial") <> "Available":
-    print "No Spatial Analysit Extention Available"
+    logger.warning("No Spatial Analysit Extention Available")
     _SAOK = False
+else:
+    logger.info("spatial analyst present")
 
 
 class ppSettings:
     def __init__(self):
+        self._GDALOK = _GDALOK
+        self._SHPLYOK = _SHPLYOK
+        self._FIONAOK = _FIONAOK
+        self._RRIOOK = _RRIOOK
+        self._ARCOK = _ARCOK
+        self._SAOK = _SAOK
         self.useOS = True
-        print _ARCOK
+
 
 defaults = ppSettings()

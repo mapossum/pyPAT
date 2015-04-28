@@ -1,8 +1,8 @@
-import pyPAT
+#import pyPAT
 
-pyPAT.r = 6
+#pyPAT.r = 6
 
-print pyPAT.defaults.useOS
+#print pyPAT.defaults.useOS
 
 print "Hello"
 
