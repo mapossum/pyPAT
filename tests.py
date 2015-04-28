@@ -2,4 +2,4 @@ import pyPAT
 
 pyPAT.r = 6
 
-print pyPAT.y
+print pyPAT.defaults.useOS
