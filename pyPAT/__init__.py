@@ -7,13 +7,16 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-
+#Setup Global Settings Variables
 _GDALOK = True
 _SHPLYOK = True
 _FIONAOK = True
 _RRIOOK = True
 _ARCOK = True
 _SAOK = True
+_MPLOK = False
+_NUMPYOK = False
+_SCIPYOK = False
 
 #Check for Open Source Software Packages
 try:
@@ -50,7 +53,21 @@ try:
     logger.info("matplotlib present")
 except:
     logger.warning("matplotlib not found")
-    _RRIOOK = False
+    _MPLOK = False
+
+try:
+    import numpy
+    logger.info("numpy present")
+except:
+    logger.warning("numpy not found")
+    _NUMPYOK = False
+
+try:
+    import scipy
+    logger.info("scipy present")
+except:
+    logger.warning("scipy not found")
+    _SCIPYOK = False
 
 #Check for Arcpy and Extentions
 try:
@@ -73,9 +90,12 @@ class ppSettings:
         self._SHPLYOK = _SHPLYOK
         self._FIONAOK = _FIONAOK
         self._RRIOOK = _RRIOOK
+        self._MPLOK = _MPLOK
+        self._NUMPYOK = _NUMPYOK
+        self._SCIPYOK = _SCIPYOK
         self._ARCOK = _ARCOK
         self._SAOK = _SAOK
-        self.useOS = True
+        #self.useOS = True
 
 
 defaults = ppSettings()
