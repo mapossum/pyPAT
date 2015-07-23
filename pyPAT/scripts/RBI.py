@@ -1,6 +1,8 @@
 import arcpy, numpy
 from arcpy import env
-import pyPAT
+#import __init__ as pyPAT
+import datetime, sys
+import numpy.lib.recfunctions
 
 env.overwriteOutput = True
 
@@ -15,10 +17,13 @@ def generateTargetIds(TargetArrs):
     return outdic
 
 #def createOutputs(PAs,OuputLocation,sumarr,detailarr):
-def createOutputs(sumarr,detailarr):
-    print env.scratchGDB
-    arcpy.da.NumPyArrayToTable(sumarr, env.scratchGDB + r"/pout_table2")
-
+def createOutputs(sumarr,detailarr, OutputLocation):
+    if (OutputLocation[-4:] == ".dbf"):
+        OutputLocation2 = OutputLocation[:-4] + "_detail.dbf"
+    else:
+        OutputLocation2 = OutputLocation + "_detail"
+    arcpy.da.NumPyArrayToTable(sumarr, OutputLocation)
+    arcpy.da.NumPyArrayToTable(detailarr, OutputLocation2)
 
 
 def findRare(a):
@@ -36,37 +41,24 @@ def arcpyRBI(Targets, TargetsIds, PlanningUnits, PlanningUnitsID, GlobalArea, Ou
         print "Please set the scratch workspace"
         return
 
-    #Targets = [r"C:\pyPAT\TestData\target_polygon_habitats.shp",r"C:\pyPAT\TestData\target_line_habitats.shp",r"C:\pyPAT\TestData\target_point_species.shp"]
-    #TargetsIds = ["TARGET_NAM","TARGET_NAM","TARGET_NAM"]
-    #PlanningUnits = r"C:\pyPAT\TestData\tydixton_planning_units.shp"
-    #PlanningUnitID = "ID"
-    #GlobalArea = r"C:\pyPAT\TestData\tydixton_watershed.shp"
-    #OutputLocation = r"C:\temp"
-
-    #Targets = [r"C:\pyPAT\TestData\utm18\haiti_benth_habs_12_05_2012_wgs84.shp"]
-    #TargetsIds = ["Hab_Name"]
-    #PlanningUnits = r"C:\pyPAT\TestData\utm18\IAV_PUs.shp"
-    #PlanningUnitID = "Unit_Id"
-    #GlobalArea = r"C:\pyPAT\TestData\utm18\IAV_PUs_dissolve.shp"
-
     TargetRecords = zip(Targets, TargetsIds)
 
     TargetArrs = []
     nrecs = 0
     for TargetRec in TargetRecords:
-        TargetTable = pyPAT.getTargetTable(TargetRec, (PlanningUnits, PlanningUnitID))
+        TargetTable = getTargetTable(TargetRec, (PlanningUnits, PlanningUnitID))
         TargetArrs.append(TargetTable)
         #TargetTable  = add_field(TargetTable, [('RBI','<f8')])
         #TargetTable['RBI'] = TargetTable['Amount'] / 3
 
         nrecs = nrecs + len(TargetTable)
 
-    PUTable = pyPAT.getPUTable((PlanningUnits, PlanningUnitID), GlobalArea)
+    PUTable = getPUTable((PlanningUnits, PlanningUnitID), GlobalArea)
 
     noarcmapstart = datetime.datetime.now()
     totalArea = PUTable['Area'].sum()
 
-    arr = numpy.zeros((nrecs,), dtype=[('TID',long),('PUID',TargetArrs[0]['PUID'].dtype),('Amount',float),('RBI',float),('HpArea',float),('HpPU_All',float),('HpPU_WTargets',float),('Rarity_All','b1'),('Rarity_W_Targets','b1')])
+    arr = numpy.zeros((nrecs,), dtype=[('TID',long),('Target', TargetArrs[0]['Target'].dtype),('PUID',TargetArrs[0]['PUID'].dtype),('Amount',float),('RBI',float),('HpArea',float),('HpPU_All',float),('HpPU_WTargets',float),('Rarity_All','b1'),('Rarity_W_Targets','b1')])
 
     targetSummary = generateTargetIds(TargetArrs)
 
@@ -76,23 +68,24 @@ def arcpyRBI(Targets, TargetsIds, PlanningUnits, PlanningUnitsID, GlobalArea, Ou
         #join = numpy.lib.recfunctions.join_by('Target', TargetTable, targetSummary, jointype='leftouter')
         #print join
         #print join.names
-
+        arr["Target"][nrecs:nrecs+sz] = TargetTable["Target"]
+        
         (arr["PUID"][nrecs:nrecs+sz], arr["Amount"][nrecs:nrecs+sz]) = (TargetTable["PUID"], TargetTable["Amount"])
 
-        arr["TID"][nrecs:nrecs+sz] = pyPAT.lup(TargetTable["Target"],targetSummary)
-
+        arr["TID"][nrecs:nrecs+sz] = lup(TargetTable["Target"],targetSummary)
+        
         nrecs = nrecs + len(TargetTable)
 
     del TargetArrs
-
+    
     PUIDic = dict(zip(PUTable["PUID"],PUTable["Area"]))
     vals = numpy.unique(arr["TID"])
     tt = numpy.size(vals)
     for val in vals:
         wind = numpy.where(arr["TID"] == val)
         rbiTOP = arr[wind]["Amount"] / arr[wind]["Amount"].sum()
-        arr['RBI'][wind] = rbiTOP / (pyPAT.lup(arr[wind]["PUID"],PUIDic) / totalArea)
-        arr['HpArea'][wind] = numpy.sqrt(rbiTOP) / numpy.sqrt(numpy.log(pyPAT.lup(arr[wind]["PUID"],PUIDic)) / numpy.log(totalArea))
+        arr['RBI'][wind] = rbiTOP / (lup(arr[wind]["PUID"],PUIDic) / totalArea)
+        arr['HpArea'][wind] = numpy.sqrt(rbiTOP) / numpy.sqrt(numpy.log(lup(arr[wind]["PUID"],PUIDic)) / numpy.log(totalArea))
         arr['HpPU_All'][wind] = numpy.sqrt(rbiTOP) / math.sqrt(float(numpy.size(arr[wind])) / float(numpy.size(PUTable["PUID"])))
         arr['HpPU_WTargets'][wind] = numpy.sqrt(rbiTOP) / math.sqrt(float(numpy.size(arr[wind])) / float(numpy.size(numpy.unique(arr["PUID"]))))
 
@@ -136,14 +129,95 @@ def arcpyRBI(Targets, TargetsIds, PlanningUnits, PlanningUnitsID, GlobalArea, Ou
 
     print "Non-ArcMap Processing Time: ", td
 
-    createOutputs(sumarr, arr)
+    createOutputs(sumarr, arr, OutputLocation)
+
+def add_field(a, descr):
+    if a.dtype.fields is None:
+        raise ValueError, "`A' must be a structured numpy array"
+    b = numpy.empty(a.shape, dtype=a.dtype.descr + descr)
+    for name in a.dtype.names:
+        b[name] = a[name]
+    return b
+
+def getTimeStamp():
+    ptime = datetime.datetime.now()
+    timestamp =  str(ptime)
+    timestamp = timestamp.replace("-"," ").replace(":"," ").replace("."," ").replace(" ","")[:17]
+    return timestamp
+
+def getTargetTable(inTarget,inPUs):
+    #### Intersect Target with PU
+    intersectedOutput = env.scratchGDB + r"\TARI_" + getTimeStamp()
+    arcpy.Intersect_analysis([inTarget[0],inPUs[0]], intersectedOutput)
+
+    #### Dissolve Output of Intersect
+    DissolveOutput = env.scratchGDB + r"\TARD_" + getTimeStamp()
+    dissolveFields = [inTarget[1],inPUs[1]]
+    arcpy.Dissolve_management(intersectedOutput, DissolveOutput, dissolveFields, "", "MULTI_PART")
+
+    desc = arcpy.Describe(DissolveOutput)
+
+    if (desc.shapeType == "Polygon"):
+        calval = '!shape.area!'
+    elif (desc.shapeType == "Polyline"):
+        calval = '!shape.length!'
+    else:
+        calval = '!shape.partCount!'
+
+
+    arcpy.AddField_management(DissolveOutput, "Amount", "DOUBLE")
+
+    arcpy.CalculateField_management(DissolveOutput, "Amount",calval,"PYTHON")
+
+    arr = arcpy.da.FeatureClassToNumPyArray(DissolveOutput, (inTarget[1], inPUs[1], 'Amount'))
+
+    if (arr.dtype.names[0] == inTarget[1]):
+        arr.dtype.names = ('Target', 'PUID', 'Amount')
+    else:
+        arr.dtype.names = ('PUID', 'Target', 'Amount')
+
+    return arr
+
+def getPUTable(inPUs,gbl):
+    intersectedOutput = env.scratchGDB + r"\PUI_" + getTimeStamp()
+    arcpy.Intersect_analysis([gbl,inPUs[0]], intersectedOutput)
+
+    DissolveOutput = env.scratchGDB + r"\PUD_" + getTimeStamp()
+    dissolveFields = [inPUs[1]]
+    arcpy.Dissolve_management(intersectedOutput, DissolveOutput, dissolveFields, "", "MULTI_PART")
+
+    arr = arcpy.da.FeatureClassToNumPyArray(DissolveOutput, (inPUs[1], 'Shape_Area'))
+
+    arr.dtype.names = ('PUID', 'Area')
+
+    return arr
+
+def lookup(a,indic):
+    return indic[a]
+
+lup = numpy.vectorize(lookup)
 
 
 if __name__ == "__main__":
-    TargetList = [r"C:\pyPAT\TestData\target_polygon_habitats.shp",r"C:\pyPAT\TestData\target_line_habitats.shp",r"C:\pyPAT\TestData\target_point_species.shp"]
-    TargetsIds = ["TARGET_NAM","TARGET_NAM","TARGET_NAM"]
-    PlanningUnits = r"C:\pyPAT\TestData\tydixton_planning_units.shp"
-    PlanningUnitID = "ID"
-    GlobalArea = r"C:\pyPAT\TestData\tydixton_watershed.shp"
-    OutputLocation = r"C:\temp")
-    arcpyRBI(TargetList, TargetsIds, PlanningUnits, PlanningUnits, PlanningUnitID, GlobalArea, OutputLocation)
+
+    firstTarget = sys.argv[1]
+    oTargets = sys.argv[2]
+
+    if (oTargets == "#"):
+        targets = []
+    else:
+        targets = oTargets.split(";")
+
+    targets.append(firstTarget)
+
+    tids = []
+    for target in targets:
+        tids.append(sys.argv[3])
+
+    TargetList = targets
+    TargetsIds = tids 
+    PlanningUnits = sys.argv[4]
+    PlanningUnitID = sys.argv[5]
+    GlobalArea = sys.argv[6]
+    OutputLocation = sys.argv[7] 
+    arcpyRBI(TargetList, TargetsIds, PlanningUnits, PlanningUnitID, GlobalArea, OutputLocation)
