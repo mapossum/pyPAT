@@ -90,7 +90,7 @@ def create_pu_dat(planning_unit_fc, pu_id_field, cost_field, status_field, outpu
         rows = sorted(arcpy.da.SearchCursor(pufc, [pu_id_field, cost_field, status_field]), key=lambda x: int(x[0]))
         writer.writerows(rows)
 
-def summarize_species(planning_unit_fc, species_fc_list, pu_id_field, species_id_field, output_folder, outputTspec, feature_field):
+def summarize_species(planning_unit_fc, species_fc_list, pu_id_field, species_id_field, output_folder, outputTspec, feature_field, tsName, tsName_field, spf_field):
     print("Generating puvspr.dat...")
     from collections import defaultdict
     agg = defaultdict(float)
@@ -115,7 +115,20 @@ def summarize_species(planning_unit_fc, species_fc_list, pu_id_field, species_id
             shapeunit = "SQUAREKILOMETERS"
 
         if outputTspec == True:
+
+            specFnames = ["id", "name"]
             ofields = [species_id_field,feature_field]
+            #arcpy.AddMessage(tsName)
+            #arcpy.AddMessage(tsName_field)
+            #arcpy.AddMessage(spf_field)
+            if tsName_field != "None":
+                ofields.append(tsName_field)
+                specFnames.append(tsName)
+
+            if spf_field != "None":
+                ofields.append(spf_field)
+                specFnames.append("spf")
+            
             spectemp_output = os.path.join(r"memory", f"dissolve_{species_name}")
 
             arcpy.analysis.Statistics(
@@ -129,11 +142,15 @@ def summarize_species(planning_unit_fc, species_fc_list, pu_id_field, species_id
                 for row in cursor:
                     if row[0] == None:
                         idout = 0
-                        print("Warning Species/Features With Null Values Present")
-                        print(row[0], row[1])
+                        arcpy.AddWarning("*Warning Species/Features With Null Values Present*")
+                        arcpy.AddMessage(str(row[0]) + ", " + str(row[1]))
+                        arcpy.AddWarning("*These will most likely cause errors in the output files*")
+                        nlist = []
+                        nlist.append(idout)
+                        nlist.append(row[1:])
+                        speclist.append(nlist)
                     else:
-                        idout = row[0]
-                    speclist.append((idout,row[1]))
+                        speclist.append(row)
 
         temp_output = os.path.join(r"memory", f"summarize_{species_name}")
         tempTable_output = os.path.join(arcpy.env.scratchGDB, f"summarizeT_{species_name}")
@@ -182,15 +199,15 @@ def summarize_species(planning_unit_fc, species_fc_list, pu_id_field, species_id
 
     if outputTspec == True:
         sorted_spec = sorted(speclist, key=lambda x: x[0])
-        spec_path = os.path.join(output_folder, "Tspec.dat")
+        spec_path = os.path.join(output_folder, "spec.dat")
         with open(spec_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["id", "name"])
+            writer.writerow(specFnames)
             writer.writerows(sorted_spec)        
 
 class Toolbox(object):
     def __init__(self):
-        self.label = "pyPat v0.0.1"
+        self.label = "pyPat v0.0.2"
         self.alias = "marxan_tools"
         self.tools = [GenerateMarxanFilesTool]
 
@@ -309,7 +326,7 @@ class GenerateMarxanFilesTool(object):
         
         # Output Tspec
         param10 = arcpy.Parameter(
-            displayName="Output Tspec.dat?",
+            displayName="Output spec. file?",
             name="outputTspec",
             datatype="GPBoolean",
             parameterType="Optional",
@@ -328,7 +345,7 @@ class GenerateMarxanFilesTool(object):
 
         # Feature Field (for Tspec.dat)
         param12 = arcpy.Parameter(
-            displayName="Feature Name Field (for Tspec.dat)",
+            displayName="Feature Name Field (for spec.dat)",
             name="feature_field",
             datatype="Field",
             parameterType="Optional",
@@ -343,8 +360,40 @@ class GenerateMarxanFilesTool(object):
             datatype="DEFolder",
             parameterType="Required",
             direction="Output")
+
+        # Parameter 1: Dropdown list for "target", "prop", or empty string
+        param20 = arcpy.Parameter(
+            displayName="Specify Target or Prop in spec.dat",
+            name="selection_type",
+            datatype="GPString",
+            parameterType="Optional",
+            direction="Input"
+        )  
+        # Set the default value to "prop"
+        param20.value = "prop"
+        param20.filter.list = [" ", "target", "prop"]
+
+        # Species ID Field
+        param21 = arcpy.Parameter(
+            displayName="Prop or Target Field",
+            name="prop_field",
+            datatype="Field",
+            parameterType="Optional",
+            direction="Input")
+
+        param21.parameterDependencies = [param1.name]
+
+        # Species ID Field
+        param22 = arcpy.Parameter(
+            displayName="SPF Field",
+            name="spf_field",
+            datatype="Field",
+            parameterType="Optional",
+            direction="Input")
+
+        param22.parameterDependencies = [param1.name]
         
-        return [param0, param3, param4, param5, param1, param11, param6, param7, param8, param9, param10, param12, param2]
+        return [param0, param3, param4, param5, param1, param11, param6, param7, param8, param9, param10, param12, param20, param21, param22, param2]
 
     def execute(self, parameters, messages):
         """The source code of the tool."""
@@ -372,11 +421,15 @@ class GenerateMarxanFilesTool(object):
         cost_field = str(parameters[2].value) #"Cost"
         status_field = str(parameters[3].value) #"Status"
         species_id_field = str(parameters[5].value) #"ID"
-        output_folder = str(parameters[12].value) #r"C:\Marxan_working\Marxan"
+        output_folder = str(parameters[15].value) #r"C:\Marxan_working\Marxan"
         boundary_units = parameters[6].value #"KILOMETERS"  # Default unit
 
         outputTspec = parameters[10].value #True
         feature_field = str(parameters[11].value) #"Feature"
+
+        tsName = parameters[12].value
+        tsName_field = str(parameters[13].value)
+        spf_field = str(parameters[14].value)
 
         if not os.path.exists(str(output_folder)):
             os.makedirs(str(output_folder))
@@ -384,7 +437,7 @@ class GenerateMarxanFilesTool(object):
         arcpy.env.overwriteOutput = True
         create_bound_dat(planning_unit_fc, pu_id_field, output_folder, boundary_units)
         create_pu_dat(planning_unit_fc, pu_id_field, cost_field, status_field, output_folder, doPAoverlay, protected_Areas, paThreshold)
-        summarize_species(planning_unit_fc, species_fc_list, pu_id_field, species_id_field, output_folder, outputTspec, feature_field)
+        summarize_species(planning_unit_fc, species_fc_list, pu_id_field, species_id_field, output_folder, outputTspec, feature_field, tsName, tsName_field, spf_field)
 
         print("All MARXAN input files generated successfully.")
 
